@@ -2,15 +2,24 @@ import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
 interface AudioPausePluginSettings {
 	resetToBeginning: boolean;
+	preventKeyboardFocus: boolean;
+}
+
+interface ExtendedAudioElement extends HTMLAudioElement {
+	_focusHandler?: (event: FocusEvent) => void;
+	_clickHandler?: (event: MouseEvent) => void;
 }
 
 const DEFAULT_SETTINGS: AudioPausePluginSettings = {
-	resetToBeginning: false
+	resetToBeginning: false,
+	preventKeyboardFocus: false
 }
 
 export default class AudioPausePlugin extends Plugin {
 	settings: AudioPausePluginSettings;
 	private audioElements: HTMLAudioElement[] = [];
+	private currentAudioIndex = -1;
+	private lastPausedAudio: HTMLAudioElement | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -19,16 +28,57 @@ export default class AudioPausePlugin extends Plugin {
 			const target = evt.target;
 			if (target instanceof HTMLAudioElement) {
 				this.pauseOtherAudio(target);
-				if (!this.audioElements.includes(target)) {
-					this.audioElements.push(target);
-				}
+				this.updateAudioElements();
+				this.currentAudioIndex = this.audioElements.indexOf(target);
+				this.lastPausedAudio = null;
+				this.applyFocusPrevention(target);
 			}
 		}, true);
+
+		this.applyFocusPreventionToAll();
+
+		this.registerEvent(this.app.workspace.on('layout-change', () => {
+			if (this.settings.preventKeyboardFocus) {
+				setTimeout(() => this.applyFocusPreventionToAll(), 100);
+			}
+		}));
+
+		// Register commands
+		this.addCommand({
+			id: 'next-audio',
+			name: 'Play next audio',
+			callback: () => {
+				this.playNextAudio();
+			}
+		});
+
+		this.addCommand({
+			id: 'previous-audio',
+			name: 'Play previous audio',
+			callback: () => {
+				this.playPreviousAudio();
+			}
+		});
+
+		this.addCommand({
+			id: 'toggle-audio',
+			name: 'Play/pause audio',
+			callback: () => {
+				this.toggleAudio();
+			}
+		});
 
 		this.addSettingTab(new AudioPauseSettingTab(this.app, this));
 	}
 
 	onunload() {
+		const allAudioElements = document.querySelectorAll('audio') as NodeListOf<HTMLAudioElement>;
+		allAudioElements.forEach(audio => {
+			const originalSetting = this.settings.preventKeyboardFocus;
+			this.settings.preventKeyboardFocus = false;
+			this.applyFocusPrevention(audio);
+			this.settings.preventKeyboardFocus = originalSetting;
+		});
 	}
 
 	async loadSettings() {
@@ -37,6 +87,7 @@ export default class AudioPausePlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		this.applyFocusPreventionToAll();
 	}
 
 	private pauseOtherAudio(currentAudio: HTMLAudioElement) {
@@ -47,6 +98,308 @@ export default class AudioPausePlugin extends Plugin {
 					audio.currentTime = 0;
 				}
 			}
+		});
+	}
+
+	private playNextAudio() {
+		// Get all audio elements in the currently active tab/document
+		this.updateAudioElements();
+		
+		if (this.audioElements.length === 0) {
+			return;
+		}
+
+		// Find currently playing audio within the active tab
+		let currentPlayingIndex = this.findCurrentlyPlayingAudio();
+		
+		// If no audio is playing in active tab, start from current index or beginning
+		if (currentPlayingIndex === -1) {
+			currentPlayingIndex = this.currentAudioIndex >= 0 ? this.currentAudioIndex : -1;
+		}
+
+		// Move to next audio (wrap around to beginning if at end)
+		this.currentAudioIndex = (currentPlayingIndex + 1) % this.audioElements.length;
+		
+		// Pause all currently playing audio everywhere
+		this.pauseAllAudio();
+
+		// Play the next audio in the active tab
+		const nextAudio = this.audioElements[this.currentAudioIndex];
+		if (nextAudio) {
+			nextAudio.play();
+		}
+	}
+
+	private playPreviousAudio() {
+		// Get all audio elements in the currently active tab/document
+		this.updateAudioElements();
+		
+		if (this.audioElements.length === 0) {
+			return;
+		}
+
+		// Find currently playing audio within the active tab
+		let currentPlayingIndex = this.findCurrentlyPlayingAudio();
+		
+		// If no audio is playing in active tab, start from current index or end
+		if (currentPlayingIndex === -1) {
+			currentPlayingIndex = this.currentAudioIndex >= 0 ? this.currentAudioIndex : this.audioElements.length;
+		}
+
+		// Move to previous audio (wrap around to end if at beginning)
+		this.currentAudioIndex = currentPlayingIndex <= 0 
+			? this.audioElements.length - 1 
+			: currentPlayingIndex - 1;
+		
+		// Pause all currently playing audio everywhere
+		this.pauseAllAudio();
+
+		// Play the previous audio in the active tab
+		const previousAudio = this.audioElements[this.currentAudioIndex];
+		if (previousAudio) {
+			previousAudio.play();
+		}
+	}
+
+	private updateAudioElements() {
+		// Get all audio elements in the current document
+		const allAudioElements = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
+		
+		// Filter to only include audio elements in the active tab/pane
+		const activeTabContent = this.getActiveTabContent();
+		if (activeTabContent) {
+			this.audioElements = allAudioElements.filter(audio => 
+				activeTabContent.contains(audio)
+			);
+		} else {
+			this.audioElements = allAudioElements;
+		}
+
+		// Reset index if it's out of bounds
+		if (this.currentAudioIndex >= this.audioElements.length) {
+			this.currentAudioIndex = -1;
+		}
+	}
+
+	private getActiveTabContent(): Element | null {
+		// Try to get the active workspace leaf content
+		const activeLeaf = this.app.workspace.activeLeaf;
+		if (activeLeaf && activeLeaf.view && activeLeaf.view.containerEl) {
+			return activeLeaf.view.containerEl;
+		}
+		
+		// Fallback to the active document
+		return document.querySelector('.workspace-leaf.mod-active .view-content') || document.body;
+	}
+
+	private findCurrentlyPlayingAudio(): number {
+		for (let i = 0; i < this.audioElements.length; i++) {
+			if (!this.audioElements[i].paused) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private toggleAudio() {
+		// Update audio elements globally (not just active tab)
+		this.updateGlobalAudioElements();
+
+		// Check if any audio is currently playing anywhere
+		const currentlyPlayingAudio = this.findGloballyPlayingAudio();
+		
+		if (currentlyPlayingAudio) {
+			// Pause the currently playing audio
+			currentlyPlayingAudio.pause();
+			this.lastPausedAudio = currentlyPlayingAudio;
+			// Update the current index in the context of all audio elements
+			this.currentAudioIndex = this.audioElements.indexOf(currentlyPlayingAudio);
+		} else {
+			// No audio is playing, try to resume the last paused audio
+			if (this.lastPausedAudio && document.contains(this.lastPausedAudio)) {
+				// Make sure the last paused audio is still available globally
+				this.updateGlobalAudioElements();
+				if (this.audioElements.includes(this.lastPausedAudio)) {
+					this.lastPausedAudio.play();
+					this.currentAudioIndex = this.audioElements.indexOf(this.lastPausedAudio);
+				} else {
+					// Last paused audio is no longer available, try to play the first audio globally
+					this.playFirstAvailableGlobalAudio();
+				}
+			} else {
+				// No last paused audio, try to play the first available audio globally
+				this.playFirstAvailableGlobalAudio();
+			}
+		}
+	}
+
+	private updateGlobalAudioElements() {
+		// Get ALL audio elements in the entire document, not filtered by active tab
+		this.audioElements = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
+
+		// Reset index if it's out of bounds
+		if (this.currentAudioIndex >= this.audioElements.length) {
+			this.currentAudioIndex = -1;
+		}
+	}
+
+	private findGloballyPlayingAudio(): HTMLAudioElement | null {
+		// Find any playing audio across all tabs
+		const allAudioElements = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
+		for (const audio of allAudioElements) {
+			if (!audio.paused) {
+				return audio;
+			}
+		}
+		return null;
+	}
+
+	private playFirstAvailableGlobalAudio() {
+		this.updateGlobalAudioElements();
+		if (this.audioElements.length > 0) {
+			this.audioElements[0].play();
+			this.currentAudioIndex = 0;
+			this.lastPausedAudio = null;
+		}
+	}
+
+	private playFirstAvailableAudio() {
+		if (this.audioElements.length > 0) {
+			this.audioElements[0].play();
+			this.currentAudioIndex = 0;
+			this.lastPausedAudio = null;
+		}
+	}
+
+	private pauseAllAudio() {
+		// Find currently playing audio to set as last paused
+		const currentlyPlaying = this.audioElements.find(audio => !audio.paused);
+		if (currentlyPlaying) {
+			this.lastPausedAudio = currentlyPlaying;
+		}
+
+		this.audioElements.forEach(audio => {
+			if (!audio.paused) {
+				audio.pause();
+				if (this.settings.resetToBeginning) {
+					audio.currentTime = 0;
+				}
+			}
+		});
+
+		// Also pause any other audio elements that might not be in our tracked list
+		const allAudioElements = document.querySelectorAll('audio') as NodeListOf<HTMLAudioElement>;
+		allAudioElements.forEach(audio => {
+			if (!audio.paused) {
+				audio.pause();
+				if (this.settings.resetToBeginning) {
+					audio.currentTime = 0;
+				}
+			}
+		});
+	}
+
+	private cleanupAudioElements() {
+		// This method is now replaced by updateAudioElements() which gets fresh elements each time
+		this.updateAudioElements();
+	}
+
+	private applyFocusPrevention(audio: HTMLAudioElement) {
+		const extendedAudio = audio as ExtendedAudioElement;
+		
+		if (this.settings.preventKeyboardFocus) {
+			// Prevent focus on the audio element itself
+			audio.tabIndex = -1;
+			
+			// Prevent focus on all interactive elements within the audio
+			const interactiveElements = audio.querySelectorAll('button, input, [tabindex], [role="button"]');
+			interactiveElements.forEach(element => {
+				if (element instanceof HTMLElement) {
+					element.tabIndex = -1;
+				}
+			});
+
+			// Add focus event listeners to prevent focus entirely
+			const focusHandler = (event: FocusEvent) => {
+				event.preventDefault();
+				event.stopPropagation();
+				(event.target as HTMLElement)?.blur();
+			};
+
+			// Store the handler so we can remove it later
+			extendedAudio._focusHandler = focusHandler;
+
+			// Prevent focus on the audio element and all its children
+			audio.addEventListener('focus', focusHandler, true);
+			audio.addEventListener('focusin', focusHandler, true);
+			
+			// Also prevent focus on all child elements
+			const allChildren = audio.querySelectorAll('*');
+			allChildren.forEach(child => {
+				if (child instanceof HTMLElement) {
+					child.addEventListener('focus', focusHandler, true);
+					child.addEventListener('focusin', focusHandler, true);
+				}
+			});
+
+			// Prevent mouse click from causing focus
+			const clickHandler = (event: MouseEvent) => {
+				// Allow the click to work but prevent focus
+				setTimeout(() => {
+					const target = event.target as HTMLElement;
+					if (target && typeof target.blur === 'function') {
+						target.blur();
+					}
+					// Also blur the audio element itself
+					if (typeof audio.blur === 'function') {
+						audio.blur();
+					}
+				}, 0);
+			};
+
+			extendedAudio._clickHandler = clickHandler;
+			audio.addEventListener('click', clickHandler, true);
+
+		} else {
+			// Remove focus prevention
+			audio.removeAttribute('tabindex');
+			
+			// Restore normal tabindex for controls
+			const controls = audio.querySelectorAll('button, input, [tabindex="-1"]');
+			controls.forEach(control => {
+				if (control instanceof HTMLElement) {
+					control.removeAttribute('tabindex');
+				}
+			});
+
+			// Remove event listeners if they exist
+			if (extendedAudio._focusHandler) {
+				const focusHandler = extendedAudio._focusHandler;
+				audio.removeEventListener('focus', focusHandler, true);
+				audio.removeEventListener('focusin', focusHandler, true);
+				
+				const allChildren = audio.querySelectorAll('*');
+				allChildren.forEach(child => {
+					if (child instanceof HTMLElement) {
+						child.removeEventListener('focus', focusHandler, true);
+						child.removeEventListener('focusin', focusHandler, true);
+					}
+				});
+
+				delete extendedAudio._focusHandler;
+			}
+
+			if (extendedAudio._clickHandler) {
+				audio.removeEventListener('click', extendedAudio._clickHandler, true);
+				delete extendedAudio._clickHandler;
+			}
+		}
+	}
+
+	private applyFocusPreventionToAll() {
+		const allAudioElements = document.querySelectorAll('audio') as NodeListOf<HTMLAudioElement>;
+		allAudioElements.forEach(audio => {
+			this.applyFocusPrevention(audio);
 		});
 	}
 }
@@ -71,6 +424,16 @@ class AudioPauseSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.resetToBeginning)
 				.onChange(async (value) => {
 					this.plugin.settings.resetToBeginning = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Prevent keyboard focus')
+			.setDesc('When enabled, audio player elements cannot be focused with the Tab key, preventing keyboard navigation interference.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.preventKeyboardFocus)
+				.onChange(async (value) => {
+					this.plugin.settings.preventKeyboardFocus = value;
 					await this.plugin.saveSettings();
 				}));
 	}
