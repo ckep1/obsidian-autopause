@@ -43,7 +43,6 @@ export default class AudioPausePlugin extends Plugin {
 			}
 		}));
 
-		// Register commands
 		this.addCommand({
 			id: 'next-audio',
 			name: 'Play next audio',
@@ -102,28 +101,21 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private playNextAudio() {
-		// Get all audio elements in the currently active tab/document
 		this.updateAudioElements();
-		
+
 		if (this.audioElements.length === 0) {
 			return;
 		}
 
-		// Find currently playing audio within the active tab
 		let currentPlayingIndex = this.findCurrentlyPlayingAudio();
-		
-		// If no audio is playing in active tab, start from current index or beginning
+
 		if (currentPlayingIndex === -1) {
 			currentPlayingIndex = this.currentAudioIndex >= 0 ? this.currentAudioIndex : -1;
 		}
 
-		// Move to next audio (wrap around to beginning if at end)
 		this.currentAudioIndex = (currentPlayingIndex + 1) % this.audioElements.length;
-		
-		// Pause all currently playing audio everywhere
 		this.pauseAllAudio();
 
-		// Play the next audio in the active tab
 		const nextAudio = this.audioElements[this.currentAudioIndex];
 		if (nextAudio) {
 			nextAudio.play();
@@ -131,30 +123,24 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private playPreviousAudio() {
-		// Get all audio elements in the currently active tab/document
 		this.updateAudioElements();
-		
+
 		if (this.audioElements.length === 0) {
 			return;
 		}
 
-		// Find currently playing audio within the active tab
 		let currentPlayingIndex = this.findCurrentlyPlayingAudio();
-		
-		// If no audio is playing in active tab, start from current index or end
+
 		if (currentPlayingIndex === -1) {
 			currentPlayingIndex = this.currentAudioIndex >= 0 ? this.currentAudioIndex : this.audioElements.length;
 		}
 
-		// Move to previous audio (wrap around to end if at beginning)
-		this.currentAudioIndex = currentPlayingIndex <= 0 
-			? this.audioElements.length - 1 
+		this.currentAudioIndex = currentPlayingIndex <= 0
+			? this.audioElements.length - 1
 			: currentPlayingIndex - 1;
-		
-		// Pause all currently playing audio everywhere
+
 		this.pauseAllAudio();
 
-		// Play the previous audio in the active tab
 		const previousAudio = this.audioElements[this.currentAudioIndex];
 		if (previousAudio) {
 			previousAudio.play();
@@ -162,33 +148,27 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private updateAudioElements() {
-		// Get all audio elements in the current document
 		const allAudioElements = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
-		
-		// Filter to only include audio elements in the active tab/pane
 		const activeTabContent = this.getActiveTabContent();
+
 		if (activeTabContent) {
-			this.audioElements = allAudioElements.filter(audio => 
+			this.audioElements = allAudioElements.filter(audio =>
 				activeTabContent.contains(audio)
 			);
 		} else {
 			this.audioElements = allAudioElements;
 		}
 
-		// Reset index if it's out of bounds
 		if (this.currentAudioIndex >= this.audioElements.length) {
 			this.currentAudioIndex = -1;
 		}
 	}
 
 	private getActiveTabContent(): Element | null {
-		// Try to get the active workspace leaf content
-		const activeLeaf = this.app.workspace.activeLeaf;
+		const activeLeaf = this.app.workspace.getMostRecentLeaf();
 		if (activeLeaf && activeLeaf.view && activeLeaf.view.containerEl) {
 			return activeLeaf.view.containerEl;
 		}
-		
-		// Fallback to the active document
 		return document.querySelector('.workspace-leaf.mod-active .view-content') || document.body;
 	}
 
@@ -202,49 +182,35 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private toggleAudio() {
-		// Update audio elements globally (not just active tab)
 		this.updateGlobalAudioElements();
-
-		// Check if any audio is currently playing anywhere
 		const currentlyPlayingAudio = this.findGloballyPlayingAudio();
-		
+
 		if (currentlyPlayingAudio) {
-			// Pause the currently playing audio
 			currentlyPlayingAudio.pause();
 			this.lastPausedAudio = currentlyPlayingAudio;
-			// Update the current index in the context of all audio elements
 			this.currentAudioIndex = this.audioElements.indexOf(currentlyPlayingAudio);
-		} else {
-			// No audio is playing, try to resume the last paused audio
-			if (this.lastPausedAudio && document.contains(this.lastPausedAudio)) {
-				// Make sure the last paused audio is still available globally
-				this.updateGlobalAudioElements();
-				if (this.audioElements.includes(this.lastPausedAudio)) {
-					this.lastPausedAudio.play();
-					this.currentAudioIndex = this.audioElements.indexOf(this.lastPausedAudio);
-				} else {
-					// Last paused audio is no longer available, try to play the first audio globally
-					this.playFirstAvailableGlobalAudio();
-				}
+		} else if (this.lastPausedAudio && document.contains(this.lastPausedAudio)) {
+			this.updateGlobalAudioElements();
+			if (this.audioElements.includes(this.lastPausedAudio)) {
+				this.lastPausedAudio.play();
+				this.currentAudioIndex = this.audioElements.indexOf(this.lastPausedAudio);
 			} else {
-				// No last paused audio, try to play the first available audio globally
 				this.playFirstAvailableGlobalAudio();
 			}
+		} else {
+			this.playFirstAvailableGlobalAudio();
 		}
 	}
 
 	private updateGlobalAudioElements() {
-		// Get ALL audio elements in the entire document, not filtered by active tab
 		this.audioElements = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
 
-		// Reset index if it's out of bounds
 		if (this.currentAudioIndex >= this.audioElements.length) {
 			this.currentAudioIndex = -1;
 		}
 	}
 
 	private findGloballyPlayingAudio(): HTMLAudioElement | null {
-		// Find any playing audio across all tabs
 		const allAudioElements = Array.from(document.querySelectorAll('audio')) as HTMLAudioElement[];
 		for (const audio of allAudioElements) {
 			if (!audio.paused) {
@@ -263,16 +229,7 @@ export default class AudioPausePlugin extends Plugin {
 		}
 	}
 
-	private playFirstAvailableAudio() {
-		if (this.audioElements.length > 0) {
-			this.audioElements[0].play();
-			this.currentAudioIndex = 0;
-			this.lastPausedAudio = null;
-		}
-	}
-
 	private pauseAllAudio() {
-		// Find currently playing audio to set as last paused
 		const currentlyPlaying = this.audioElements.find(audio => !audio.paused);
 		if (currentlyPlaying) {
 			this.lastPausedAudio = currentlyPlaying;
@@ -287,7 +244,6 @@ export default class AudioPausePlugin extends Plugin {
 			}
 		});
 
-		// Also pause any other audio elements that might not be in our tracked list
 		const allAudioElements = document.querySelectorAll('audio') as NodeListOf<HTMLAudioElement>;
 		allAudioElements.forEach(audio => {
 			if (!audio.paused) {
@@ -297,11 +253,6 @@ export default class AudioPausePlugin extends Plugin {
 				}
 			}
 		});
-	}
-
-	private cleanupAudioElements() {
-		// This method is now replaced by updateAudioElements() which gets fresh elements each time
-		this.updateAudioElements();
 	}
 
 	private applyFocusPrevention(audio: HTMLAudioElement) {
