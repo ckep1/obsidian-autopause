@@ -1,7 +1,7 @@
 {
 	"id": "auto-pause",
 	"name": "AutoPause",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"minAppVersion": "0.15.0",
 	"description": "Allows one audio track to be played at a time, pausing or stopping any others.",
 	"author": "Chris Kephart",
