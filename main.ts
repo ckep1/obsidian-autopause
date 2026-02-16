@@ -90,7 +90,8 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private pauseOtherAudio(currentAudio: HTMLAudioElement) {
-		this.audioElements.forEach(audio => {
+		const allAudioElements = document.querySelectorAll('audio') as NodeListOf<HTMLAudioElement>;
+		allAudioElements.forEach(audio => {
 			if (audio !== currentAudio && !audio.paused) {
 				audio.pause();
 				if (this.settings.resetToBeginning) {
