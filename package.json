@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-auto-pause",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "This is a plugin for Obsidian (https://obsidian.md) that automatically pauses all audio elements when a new audio element is played.",
 	"main": "main.js",
 	"scripts": {
