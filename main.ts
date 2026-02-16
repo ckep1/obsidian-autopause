@@ -35,6 +35,13 @@ export default class AudioPausePlugin extends Plugin {
 			}
 		}, true);
 
+		this.registerDomEvent(document, 'pause', (evt: Event) => {
+			const target = evt.target;
+			if (target instanceof HTMLAudioElement) {
+				this.lastPausedAudio = target;
+			}
+		}, true);
+
 		this.applyFocusPreventionToAll();
 
 		this.registerEvent(this.app.workspace.on('layout-change', () => {
