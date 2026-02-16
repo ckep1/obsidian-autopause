@@ -110,7 +110,11 @@ export default class AudioPausePlugin extends Plugin {
 		let currentPlayingIndex = this.findCurrentlyPlayingAudio();
 
 		if (currentPlayingIndex === -1) {
-			currentPlayingIndex = this.currentAudioIndex >= 0 ? this.currentAudioIndex : -1;
+			if (this.lastPausedAudio && this.audioElements.includes(this.lastPausedAudio)) {
+				currentPlayingIndex = this.audioElements.indexOf(this.lastPausedAudio);
+			} else {
+				currentPlayingIndex = -1;
+			}
 		}
 
 		this.currentAudioIndex = (currentPlayingIndex + 1) % this.audioElements.length;
@@ -132,7 +136,11 @@ export default class AudioPausePlugin extends Plugin {
 		let currentPlayingIndex = this.findCurrentlyPlayingAudio();
 
 		if (currentPlayingIndex === -1) {
-			currentPlayingIndex = this.currentAudioIndex >= 0 ? this.currentAudioIndex : this.audioElements.length;
+			if (this.lastPausedAudio && this.audioElements.includes(this.lastPausedAudio)) {
+				currentPlayingIndex = this.audioElements.indexOf(this.lastPausedAudio);
+			} else {
+				currentPlayingIndex = this.audioElements.length;
+			}
 		}
 
 		this.currentAudioIndex = currentPlayingIndex <= 0
@@ -259,7 +267,22 @@ export default class AudioPausePlugin extends Plugin {
 		const extendedAudio = audio as ExtendedAudioElement;
 		
 		if (this.settings.preventKeyboardFocus) {
-			// Prevent focus on the audio element itself
+			if (extendedAudio._focusHandler) {
+				const oldFocusHandler = extendedAudio._focusHandler;
+				audio.removeEventListener('focus', oldFocusHandler, true);
+				audio.removeEventListener('focusin', oldFocusHandler, true);
+				const allChildren = audio.querySelectorAll('*');
+				allChildren.forEach(child => {
+					if (child instanceof HTMLElement) {
+						child.removeEventListener('focus', oldFocusHandler, true);
+						child.removeEventListener('focusin', oldFocusHandler, true);
+					}
+				});
+			}
+			if (extendedAudio._clickHandler) {
+				audio.removeEventListener('click', extendedAudio._clickHandler, true);
+			}
+
 			audio.tabIndex = -1;
 			
 			// Prevent focus on all interactive elements within the audio
