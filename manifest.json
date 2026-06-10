@@ -3,7 +3,7 @@
 	"name": "AutoPause",
 	"version": "1.1.1",
 	"minAppVersion": "0.15.0",
-	"description": "Allows one audio track to be played at a time, pausing or stopping any others.",
+	"description": "Keeps one audio stream active by pausing others, with an optional reset to start.",
 	"author": "Chris Kephart",
 	"authorUrl": "https://github.com/ckep1",
 	"isDesktopOnly": false
