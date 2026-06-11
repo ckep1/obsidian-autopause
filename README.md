@@ -6,10 +6,10 @@ AutoPause is a simple Obsidian plugin that automatically pauses playing audio wh
 
 - Automatically pauses playing audio when a new clip is played
 - Option to reset to the beginning instead of just pausing
-- **Hotkey support for navigating through audio files in the current tab**
-  - Next audio: Navigate to and play the next audio file
-  - Previous audio: Navigate to and play the previous audio file 
-  - **Play/pause toggle: Pause currently playing audio or resume the last paused audio (works globally across all tabs)**
+- **Hotkey support for controlling audio clips**
+  - Next audio: Play the next audio file in the current tab
+  - Previous audio: Play the previous audio file in the current tab
+  - **Play/pause toggle: Pause currently playing audio globally, or resume the last paused audio if still available**
 - **Option to prevent keyboard focus on audio player elements**
 - Works on desktop and mobile across tabs and document types.
 
@@ -24,24 +24,24 @@ Add to Obsidian via the Community Plugins Library in settings or:
 
 - No interaction is required besides enabling the plugin.
 - With an audio clip playing, starting another one will pause or stop the initial playing one depending on the setting.
-- **Use hotkeys to navigate between audio files on the currently active tab** (configure in Settings > Hotkeys > AutoPause):
-  - "Play next audio" - Cycles to the next audio file and plays it
-  - "Play previous audio" - Cycles to the previous audio file and plays it
-  - **"Play/pause audio" - Pauses any currently playing audio anywhere, or resumes the last paused audio globally**
+- **Use hotkeys to control audio playback** (configure in Settings > Hotkeys > AutoPause):
+  - "Play next audio" - Cycles to the next audio file in the active tab and plays it
+  - "Play previous audio" - Cycles to the previous audio file in the active tab and plays it
+  - **"Play/pause audio" - Pauses currently playing audio globally, then resumes the last paused audio if still available (otherwise plays the first available audio)**
 - Tested and working with local audio files and the default Obsidian audio embed.
 
 ## Settings
 
 - **Reset to beginning**: When enabled, other audio clips will be reset to the beginning instead of just pausing. This is the same as stopping in other audio players.
-- **Prevent keyboard focus**: When enabled, audio player elements cannot be focused with the keyboard after clicking the controls which can break the shortcuts.
+- **Prevent keyboard focus**: When enabled, audio player elements cannot be focused with the Tab key, preventing keyboard navigation from interfering with shortcuts.
 
 ## Hotkeys
 
 The plugin registers three commands that can be assigned hotkeys in Obsidian's hotkey settings:
 
-- **Play next audio**: Cycles through audio files in forward order
-- **Play previous audio**: Cycles through audio files in reverse order
-- **Play/pause audio**: Toggles between play and pause - pauses currently playing audio or resumes the last paused audio
+- **Play next audio**: Cycles through audio files in forward order in the active tab
+- **Play previous audio**: Cycles through audio files in reverse order in the active tab
+- **Play/pause audio**: Pauses currently playing audio globally or resumes the last paused audio if still available
 
 To assign hotkeys:
 1. Go to Settings → Hotkeys
