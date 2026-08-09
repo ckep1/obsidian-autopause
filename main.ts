@@ -20,27 +20,17 @@ export default class AudioPausePlugin extends Plugin {
 	private audioElements: HTMLAudioElement[] = [];
 	private currentAudioIndex = -1;
 	private lastPausedAudio: HTMLAudioElement | null = null;
+	private trackedDocuments = new WeakSet<Document>();
 
 	async onload() {
 		await this.loadSettings();
 
-		this.registerDomEvent(activeDocument, 'play', (evt: Event) => {
-			const target = evt.target;
-			if (target instanceof HTMLAudioElement) {
-				this.pauseOtherAudio(target);
-				this.updateAudioElements();
-				this.currentAudioIndex = this.audioElements.indexOf(target);
-				this.lastPausedAudio = null;
-				this.applyFocusPrevention(target);
-			}
-		}, true);
+		this.getAllDocuments().forEach(doc => this.trackDocument(doc));
 
-		this.registerDomEvent(activeDocument, 'pause', (evt: Event) => {
-			const target = evt.target;
-			if (target instanceof HTMLAudioElement) {
-				this.lastPausedAudio = target;
-			}
-		}, true);
+		this.registerEvent(this.app.workspace.on('window-open', (workspaceWindow) => {
+			this.trackDocument(workspaceWindow.doc);
+			this.applyFocusPreventionToAll();
+		}));
 
 		this.applyFocusPreventionToAll();
 
@@ -77,8 +67,52 @@ export default class AudioPausePlugin extends Plugin {
 		this.addSettingTab(new AudioPauseSettingTab(this.app, this));
 	}
 
+	private trackDocument(doc: Document) {
+		if (this.trackedDocuments.has(doc)) {
+			return;
+		}
+		this.trackedDocuments.add(doc);
+
+		this.registerDomEvent(doc, 'play', (evt: Event) => {
+			const target = this.asAudioElement(evt.target);
+			if (target) {
+				this.pauseOtherAudio(target);
+				this.updateAudioElements();
+				this.currentAudioIndex = this.audioElements.indexOf(target);
+				this.lastPausedAudio = null;
+				this.applyFocusPrevention(target);
+			}
+		}, true);
+
+		this.registerDomEvent(doc, 'pause', (evt: Event) => {
+			const target = this.asAudioElement(evt.target);
+			if (target) {
+				this.lastPausedAudio = target;
+			}
+		}, true);
+	}
+
+	private asAudioElement(target: EventTarget | null): HTMLAudioElement | null {
+		const node = target as Node | null;
+		return node && node.instanceOf(HTMLAudioElement) ? node : null;
+	}
+
+	private getAllDocuments(): Document[] {
+		const documents = new Set<Document>([this.app.workspace.containerEl.doc]);
+		this.app.workspace.iterateAllLeaves(leaf => documents.add(leaf.view.containerEl.doc));
+		return Array.from(documents);
+	}
+
+	private getAllAudioElements(): HTMLAudioElement[] {
+		const audioElements: HTMLAudioElement[] = [];
+		this.getAllDocuments().forEach(doc => {
+			audioElements.push(...Array.from(doc.querySelectorAll('audio')));
+		});
+		return audioElements;
+	}
+
 	onunload() {
-		const allAudioElements = activeDocument.querySelectorAll('audio');
+		const allAudioElements = this.getAllAudioElements();
 		allAudioElements.forEach(audio => {
 			const originalSetting = this.settings.preventKeyboardFocus;
 			this.settings.preventKeyboardFocus = false;
@@ -97,7 +131,7 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private pauseOtherAudio(currentAudio: HTMLAudioElement) {
-		const allAudioElements = activeDocument.querySelectorAll('audio');
+		const allAudioElements = this.getAllAudioElements();
 		allAudioElements.forEach(audio => {
 			if (audio !== currentAudio && !audio.paused) {
 				audio.pause();
@@ -164,7 +198,7 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private updateAudioElements() {
-		const allAudioElements = Array.from(activeDocument.querySelectorAll('audio'));
+		const allAudioElements = this.getAllAudioElements();
 		const activeTabContent = this.getActiveTabContent();
 
 		if (activeTabContent) {
@@ -185,7 +219,13 @@ export default class AudioPausePlugin extends Plugin {
 		if (activeLeaf && activeLeaf.view && activeLeaf.view.containerEl) {
 			return activeLeaf.view.containerEl;
 		}
-		return activeDocument.querySelector('.workspace-leaf.mod-active .view-content') || activeDocument.body;
+		for (const doc of this.getAllDocuments()) {
+			const activeContent = doc.querySelector('.workspace-leaf.mod-active .view-content');
+			if (activeContent) {
+				return activeContent;
+			}
+		}
+		return null;
 	}
 
 	private findCurrentlyPlayingAudio(): number {
@@ -205,7 +245,7 @@ export default class AudioPausePlugin extends Plugin {
 			currentlyPlayingAudio.pause();
 			this.lastPausedAudio = currentlyPlayingAudio;
 			this.currentAudioIndex = this.audioElements.indexOf(currentlyPlayingAudio);
-		} else if (this.lastPausedAudio && activeDocument.contains(this.lastPausedAudio)) {
+		} else if (this.lastPausedAudio && this.lastPausedAudio.isConnected) {
 			this.updateGlobalAudioElements();
 			if (this.audioElements.includes(this.lastPausedAudio)) {
 				void this.lastPausedAudio.play();
@@ -219,7 +259,7 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private updateGlobalAudioElements() {
-		this.audioElements = Array.from(activeDocument.querySelectorAll('audio'));
+		this.audioElements = this.getAllAudioElements();
 
 		if (this.currentAudioIndex >= this.audioElements.length) {
 			this.currentAudioIndex = -1;
@@ -227,7 +267,7 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private findGloballyPlayingAudio(): HTMLAudioElement | null {
-		const allAudioElements = Array.from(activeDocument.querySelectorAll('audio'));
+		const allAudioElements = this.getAllAudioElements();
 		for (const audio of allAudioElements) {
 			if (!audio.paused) {
 				return audio;
@@ -246,7 +286,7 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private pauseAllAudio() {
-		const allAudioElements = activeDocument.querySelectorAll('audio');
+		const allAudioElements = this.getAllAudioElements();
 		allAudioElements.forEach(audio => {
 			if (!audio.paused) {
 				audio.pause();
@@ -313,7 +353,7 @@ export default class AudioPausePlugin extends Plugin {
 			// Prevent mouse click from causing focus
 			const clickHandler = (event: MouseEvent) => {
 				// Allow the click to work but prevent focus
-				activeWindow.setTimeout(() => {
+				audio.win.setTimeout(() => {
 					const target = event.target as HTMLElement;
 					if (target && typeof target.blur === 'function') {
 						target.blur();
@@ -365,7 +405,7 @@ export default class AudioPausePlugin extends Plugin {
 	}
 
 	private applyFocusPreventionToAll() {
-		const allAudioElements = activeDocument.querySelectorAll('audio');
+		const allAudioElements = this.getAllAudioElements();
 		allAudioElements.forEach(audio => {
 			this.applyFocusPrevention(audio);
 		});

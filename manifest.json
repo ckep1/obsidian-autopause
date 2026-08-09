@@ -1,7 +1,7 @@
 {
 	"id": "auto-pause",
 	"name": "AutoPause",
-	"version": "1.1.2",
+	"version": "1.2.0",
 	"minAppVersion": "0.15.4",
 	"description": "Keeps one audio stream active by pausing others, with an optional reset to start.",
 	"author": "Chris Kephart",

@@ -11,7 +11,7 @@ AutoPause is a simple Obsidian plugin that automatically pauses playing audio wh
   - Previous audio: Play the previous audio file in the current tab
   - **Play/pause toggle: Pause currently playing audio globally, or resume the last paused audio if still available**
 - **Option to prevent keyboard focus on audio player elements**
-- Works on desktop and mobile across tabs and document types.
+- Works on desktop and mobile across tabs, popout windows, and document types.
 
 ## Installation
 
